@@ -27,34 +27,55 @@ choice = st.sidebar.selectbox("Navigation", menu)
 # --- USER SIDE: APPLY ---
 if choice == "User: Apply for Job":
     st.header("Apply for an Opening")
+    
+    # 1. Fetch available jobs from the database
     jobs_df = pd.read_sql_query("SELECT * FROM jobs", conn)
     
     if jobs_df.empty:
         st.warning("No jobs posted yet. Please check back later.")
     else:
+        # 2. Let user select a job first
         job_titles = jobs_df['title'].tolist()
-        selected_job = st.selectbox("Select a Job", job_titles)
         
-        with st.form("apply_form", clear_on_submit=True):
-            name = st.text_input("Full Name")
-            email = st.text_input("Email Address")
-            cv_file = st.file_uploader("Upload CV (PDF)", type=["pdf"])
-            submit = st.form_submit_button("Submit Application")
+        # We add 'None' as the default index so the form is hidden at first
+        selected_job = st.selectbox(
+            "Which position are you interested in?", 
+            job_titles, 
+            index=None, 
+            placeholder="Select a job to see the application form..."
+        )
+        
+        # 3. Only show the form IF a job has been selected
+        if selected_job:
+            st.divider() # Adds a nice visual line
+            st.subheader(f"Application Form for: {selected_job}")
             
-            if submit:
-                if name and email and cv_file:
-                    file_path = os.path.join("uploads", cv_file.name)
-                    with open(file_path, "wb") as f:
-                        f.write(cv_file.getbuffer())
-                    
-                    job_id = jobs_df[jobs_df['title'] == selected_job]['id'].values[0]
-                    c.execute('INSERT INTO applications (job_id, name, email, file_name) VALUES (?,?,?,?)', 
-                              (int(job_id), name, email, cv_file.name))
-                    conn.commit()
-                    st.success(f"Successfully applied for {selected_job}!")
-                else:
-                    st.error("Please fill all fields and upload a CV.")
-
+            with st.form("apply_form", clear_on_submit=True):
+                name = st.text_input("Full Name")
+                email = st.text_input("Email Address")
+                cv_file = st.file_uploader("Upload CV (PDF)", type=["pdf"])
+                
+                # Hidden logic to get the description for this specific job
+                job_info = jobs_df[jobs_df['title'] == selected_job].iloc[0]
+                st.info(f"Quick Review of requirements: {job_info['description'][:150]}...")
+                
+                submit = st.form_submit_button("Submit Application")
+                
+                if submit:
+                    if name and email and cv_file:
+                        # Save file locally
+                        file_path = os.path.join("uploads", cv_file.name)
+                        with open(file_path, "wb") as f:
+                            f.write(cv_file.getbuffer())
+                        
+                        # Save record to Database
+                        job_id = job_info['id']
+                        c.execute('INSERT INTO applications (job_id, name, email, file_name) VALUES (?,?,?,?)', 
+                                  (int(job_id), name, email, cv_file.name))
+                        conn.commit()
+                        st.success(f"Successfully applied for {selected_job}! Your files have been sent to the recruiter.")
+                    else:
+                        st.error("Please fill all fields and upload a CV.")
 # --- ADMIN SIDE: POST JOB ---
 elif choice == "Admin: Post Job":
     st.header("Post a New Job Description")
